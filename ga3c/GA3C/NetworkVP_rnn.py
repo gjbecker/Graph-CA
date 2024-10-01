@@ -39,14 +39,16 @@ class NetworkVP_rnn(NetworkVPCore):
     def _create_graph(self):
         # Use shared parent class to construct graph inputs
         self._create_graph_inputs()
+        ##############################
+        # Input: x (obs vector)
+        ##############################
 
-        # Put custom architecture here
-
+        ### Input Regularization
         if Config.USE_REGULARIZATION:
             regularizer = tf.contrib.layers.l2_regularizer(scale=0.0)
         else:
             regularizer = None
-
+        ### Input Normalization
         if Config.NORMALIZE_INPUT:
             self.avg_vec = tf.constant(Config.NN_INPUT_AVG_VECTOR, dtype = tf.float32)
             self.std_vec = tf.constant(Config.NN_INPUT_STD_VECTOR, dtype = tf.float32)
@@ -54,18 +56,18 @@ class NetworkVP_rnn(NetworkVPCore):
         else:
             self.x_normalized = self.x
 
-
+        ### Input split to ego and other agents
         self.num_other_agents = self.x[:,0]
         self.host_agent_vec = self.x_normalized[:,Config.FIRST_STATE_INDEX:Config.HOST_AGENT_STATE_SIZE+Config.FIRST_STATE_INDEX:]
         self.other_agent_vec = self.x_normalized[:,Config.HOST_AGENT_STATE_SIZE+Config.FIRST_STATE_INDEX:]
         self.other_agent_seq = tf.reshape(self.other_agent_vec, [-1, Config.MAX_NUM_OTHER_AGENTS_OBSERVED, Config.OTHER_AGENT_FULL_OBSERVATION_LENGTH])
-
+        ### LSTM ###
         if Config.MULTI_AGENT_ARCH == Config.MULTI_AGENT_ARCH_RNN:
             num_hidden = 64
             self.rnn_outputs, self.rnn_state = tf.nn.dynamic_rnn(tf.contrib.rnn.LSTMCell(num_hidden), self.other_agent_seq, dtype=tf.float32, sequence_length=self.num_other_agents)
             self.rnn_output = self.rnn_state.h
             self.layer1_input = tf.concat([self.host_agent_vec, self.rnn_output],1, name='layer1_input')
-
+        ############
         elif Config.MULTI_AGENT_ARCH == Config.MULTI_AGENT_ARCH_WEIGHT_SHARING:
             ##############################################
             # Layer 1   - host agent gets its own set of weights
@@ -99,10 +101,11 @@ class NetworkVP_rnn(NetworkVPCore):
         else:
             print("[NetworkVP_rnn.py] Config.MULTI_AGENT_ARCH is not a valid option.")
             assert(0)
-
+        ### Actor Critic Network ###
         self.layer1 = tf.layers.dense(inputs=self.layer1_input, units=256, activation=tf.nn.relu, kernel_regularizer=regularizer, name = 'layer1')
         self.layer2 = tf.layers.dense(inputs=self.layer1, units=256, activation=tf.nn.relu, name = 'layer2')
         self.final_flat = tf.contrib.layers.flatten(self.layer2)
-        
+        ############################
+
         # Use shared parent class to construct graph outputs/objectives
         self._create_graph_outputs()

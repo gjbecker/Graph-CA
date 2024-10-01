@@ -58,24 +58,40 @@ class NetworkVPCore(object):
 
     
     def _create_graph_inputs(self):
+        ##############################
+        # Input: 
+        #       x (obs vector)
+        ##############################
             self.x = tf.compat.v1.placeholder(
                 tf.float32, [None, Config.NN_INPUT_SIZE], name='X')
  
     def _create_graph_outputs(self):
-        # FCN
+        ##############################
+        # Outputs: 
+        #       y_r (reward)
+        #       action_index (action)
+        #       beta
+        #       lr
+        # variable values passed through feed dict
+        ##############################
+
+        ### FCN
         self.fc1 = tf.layers.dense(inputs=self.final_flat, units = 256, use_bias = True, activation=tf.nn.relu, name = 'fullyconnected1')
 
-        # Cost: v 
+        ### Cost: v 
+        # predicted value
         self.logits_v = tf.squeeze(tf.layers.dense(inputs=self.fc1, units = 1, use_bias = True, activation=None, name = 'logits_v'), axis=[1])
         self.y_r = tf.compat.v1.placeholder(tf.float32, [None], name='Yr')
         self.cost_v = 0.5 * tf.reduce_sum(tf.square(self.y_r - self.logits_v), axis=0)
 
-        # Cost: p
+        ### Cost: p
         self.logits_p = tf.layers.dense(inputs = self.fc1, units = self.num_actions, name = 'logits_p', activation = None)
+        # predicted action
         self.softmax_p = (tf.nn.softmax(self.logits_p) + Config.MIN_POLICY) / (1.0 + Config.MIN_POLICY * self.num_actions)
         self.action_index = tf.compat.v1.placeholder(tf.float32, [None, self.num_actions])
         self.selected_action_prob = tf.reduce_sum(self.softmax_p * self.action_index, axis=1, name='selection_action_prob')
 
+        # advantage calculation
         self.cost_p_advant= tf.compat.v1.log(tf.maximum(self.selected_action_prob, self.log_epsilon)) \
                     * (self.y_r - tf.stop_gradient(self.logits_v))  # Stop_gradient ensures the value gradient feedback doesn't contribute to policy learning
         self.var_beta = tf.compat.v1.placeholder(tf.float32, name='beta', shape=[])
